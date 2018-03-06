@@ -1,13 +1,13 @@
 {
   "name": "daikon",
   "description": "A JavaScript DICOM reader.",
-  "main" : "release/current/daikon.js",
+  "main": "release/current/daikon.js",
   "ignore": [
-      "src",
-      "tests",
-      "package.json",
-      "README.md",
-      ".gitignore"
+    "src",
+    "tests",
+    "package.json",
+    "README.md",
+    ".gitignore"
   ],
   "dependencies": {
     "pako": "*",
@@ -19,7 +19,9 @@
     "uglifyjs": "*"
   },
   "license": "MIT",
-  "authors" : ["Michael Martinez"],
+  "authors": [
+    "Michael Martinez"
+  ],
   "homepage": "https://github.com/rii-mango/Daikon",
   "keywords": [
     "JavaScript",
@@ -28,5 +30,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/rii-mango/Daikon.git"
-  }
+  },
+  "version": "1.2.23"
 }
