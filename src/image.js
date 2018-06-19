@@ -574,7 +574,7 @@ daikon.Image.prototype.getInterpretedData = function (asArray, asObject, frameIn
     mask = daikon.Utils.createBitMask(this.getBitsAllocated() / 8, this.getBitsStored(),
         this.getDataType() === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED);
     datatype = this.getPixelRepresentation() ? daikon.Image.BYTE_TYPE_INTEGER : daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED;
-    numBytes = this.getBitsAllocated() / 8;
+    numBytes = parseInt(Math.ceil(this.getBitsAllocated() / 8));
     rawData = this.getRawData();
     dataView = new DataView(rawData);
     totalElements = rawData.byteLength / numBytes;
