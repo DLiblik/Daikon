@@ -111,6 +111,10 @@ daikon.Image.getMajorAxisFromPatientRelativeDirectionCosine = function(x, y, z) 
 
 /*** Prototype Methods ***/
 
+daikon.Image.prototype.getTagSingleValueSafely = function(group, element, index) {
+    return daikon.Image.getSingleValueSafely(this.getTag(group, element), index || 0);
+}
+
 /**
  * Returns the number of columns.
  * @returns {number}
