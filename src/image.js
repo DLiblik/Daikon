@@ -209,6 +209,14 @@ daikon.Image.prototype.getImagePositionSliceDir = function (sliceDir) {
 };
 
 
+/**
+ * Returns the modality
+ * @returns {string}
+ */
+daikon.Image.prototype.getModality = function () {
+    return daikon.Image.getSingleValueSafely(this.getTag(daikon.Tag.TAG_MODALITY[0], daikon.Tag.TAG_MODALITY[1]), 0);
+};
+
 
 /**
  * Returns the slice location.
@@ -609,6 +617,18 @@ daikon.Image.prototype.getInterpretedFrame = function (frameIndex) {
         }
     }
 
+    var lutShape = daikon.Image.getSingleValueSafely(this.getTag(daikon.Tag.TAG_LUT_SHAPE[0], daikon.Tag.TAG_LUT_SHAPE[1]), 0);
+    if (lutShape === "INVERSE") {
+        var maxVal = Math.pow(2, this.getBitsStored());
+        if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+            maxVal /= 2;
+        }
+        var originalGetWord = getWord;
+        getWord = function(offset, endian) { 
+            return (maxVal - originalGetWord(offset, endian)); 
+        }
+    }
+
     for (ctr = 0, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
         rawValue = getWord(ctr * numBytes, littleEndian);
 
@@ -679,6 +699,18 @@ daikon.Image.prototype.getInterpretedData = function (asArray, asObject, frameIn
         }
     }
     
+    var lutShape = daikon.Image.getSingleValueSafely(this.getTag(daikon.Tag.TAG_LUT_SHAPE[0], daikon.Tag.TAG_LUT_SHAPE[1]), 0);
+    if (lutShape === "INVERSE") {
+        var maxVal = Math.pow(2, this.getBitsStored());
+        if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+            maxVal /= 2;
+        }
+        var originalGetWord = getWord;
+        getWord = function(offset, endian) { 
+            return (maxVal - originalGetWord(offset, endian)); 
+        }
+    }
+
     for (ctr = offset, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
         rawValue = getWord(ctr * numBytes, littleEndian);
 
@@ -700,7 +732,7 @@ daikon.Image.prototype.getInterpretedData = function (asArray, asObject, frameIn
         return {data: data, min: min, minIndex: minIndex, max: max, maxIndex: maxIndex, numCols: this.getCols(),
             numRows: this.getRows()};
     }
-
+    
     return data;
 };
 
