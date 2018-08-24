@@ -594,20 +594,23 @@ daikon.Image.prototype.getInterpretedFrame = function (frameIndex) {
 
     data = new Float32Array(numElements);
 
-    for (ctr = 0, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
-        if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
-            if (numBytes === 1) {
-                rawValue = dataView.getInt8(ctr * numBytes);
-            } else if (numBytes === 2) {
-                rawValue = dataView.getInt16(ctr * numBytes, littleEndian);
-            }
-        } else if (datatype === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED) {
-            if (numBytes === 1) {
-                rawValue = dataView.getUint8(ctr * numBytes);
-            } else if (numBytes === 2) {
-                rawValue = dataView.getUint16(ctr * numBytes, littleEndian);
-            }
+    var getWord;
+    if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+        if (numBytes === 1) {
+            getWord = dataView.getInt8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getInt16.bind(dataView)
         }
+    } else if (datatype === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED) {
+        if (numBytes === 1) {
+            getWord = dataView.getUint8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getUint16.bind(dataView)
+        }
+    }
+
+    for (ctr = 0, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
+        rawValue = getWord(ctr * numBytes, littleEndian);
 
         value = ((rawValue & mask) * slope) + intercept;
         data[dataCtr] = value;
@@ -661,21 +664,23 @@ daikon.Image.prototype.getInterpretedData = function (asArray, asObject, frameIn
     } else {
         data = new Float32Array(numElements);
     }
-
-    for (ctr = offset, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
-        if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
-            if (numBytes === 1) {
-                rawValue = dataView.getInt8(ctr * numBytes);
-            } else if (numBytes === 2) {
-                rawValue = dataView.getInt16(ctr * numBytes, littleEndian);
-            }
-        } else if (datatype === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED) {
-            if (numBytes === 1) {
-                rawValue = dataView.getUint8(ctr * numBytes);
-            } else if (numBytes === 2) {
-                rawValue = dataView.getUint16(ctr * numBytes, littleEndian);
-            }
+    var getWord;
+    if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+        if (numBytes === 1) {
+            getWord = dataView.getInt8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getInt16.bind(dataView)
         }
+    } else if (datatype === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED) {
+        if (numBytes === 1) {
+            getWord = dataView.getUint8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getUint16.bind(dataView)
+        }
+    }
+    
+    for (ctr = offset, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
+        rawValue = getWord(ctr * numBytes, littleEndian);
 
         value = ((rawValue & mask) * slope) + intercept;
         data[dataCtr] = value;
