@@ -1,5 +1,5 @@
 {
-  "name": "@qiiu/daikon",
+  "name": "qiiu-daikon",
   "version": "1.2.23",
   "description": "Fork of daikon - A JavaScript DICOM reader.",
   "main": "src/main.js",
