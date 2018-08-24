@@ -165,6 +165,9 @@ daikon.Tag.TAG_IMAGE_ORIENTATION = [0x0020, 0x0037];
 daikon.Tag.TAG_IMAGE_POSITION = [0x0020, 0x0032];
 daikon.Tag.TAG_SLICE_LOCATION_VECTOR = [0x0018, 0x2005];
 
+// LUT shape
+daikon.Tag.TAG_LUT_SHAPE = [0x2050, 0x0020];
+
 // pixel data
 daikon.Tag.TAG_PIXEL_DATA = [0x7FE0, 0x0010];
 
@@ -257,6 +260,10 @@ daikon.Tag.getUnsignedInteger32 = function (rawData, littleEndian) {
 
 daikon.Tag.getFloat64 = function (rawData, littleEndian) {
     var data, mul, ctr;
+
+    if (rawData.byteLength < 8) {
+        return 0;
+    }
 
     mul = rawData.byteLength / 8;
     data = [];

@@ -111,6 +111,10 @@ daikon.Image.getMajorAxisFromPatientRelativeDirectionCosine = function(x, y, z) 
 
 /*** Prototype Methods ***/
 
+daikon.Image.prototype.getTagSingleValueSafely = function(group, element, index) {
+    return daikon.Image.getSingleValueSafely(this.getTag(group, element), index || 0);
+}
+
 /**
  * Returns the number of columns.
  * @returns {number}
@@ -185,7 +189,7 @@ daikon.Image.prototype.getImagePosition = function () {
  */
 daikon.Image.prototype.getImageDirections = function () {
     return daikon.Image.getValueSafely(this.getTag(daikon.Tag.TAG_IMAGE_ORIENTATION[0], daikon.Tag.TAG_IMAGE_ORIENTATION[1]))
-}
+};
 
 
 /**
@@ -204,6 +208,14 @@ daikon.Image.prototype.getImagePositionSliceDir = function (sliceDir) {
     return 0;
 };
 
+
+/**
+ * Returns the modality
+ * @returns {string}
+ */
+daikon.Image.prototype.getModality = function () {
+    return daikon.Image.getSingleValueSafely(this.getTag(daikon.Tag.TAG_MODALITY[0], daikon.Tag.TAG_MODALITY[1]), 0);
+};
 
 
 /**
@@ -555,23 +567,110 @@ daikon.Image.prototype.getRawData = function () {
     return this.getPixelDataBytes();
 };
 
+/**
+ * Returns the raw pixel data.
+ * @returns {ArrayBuffer}
+ */
+daikon.Image.prototype.getRawFrameData = function (frameIndex) {
+    var frameData = this.getDecompressedFrame(frameIndex);
+    frameData.data = this.depaletizeFrameData(frameData.data);
+    return frameData.data;
+};
+
+
+daikon.Image.prototype.getInterpretedFrame = function (frameIndex) {
+    var datatype, numBytes, numElements, dataView, data, ctr, mask, slope, intercept, min, max, value, minIndex,
+        maxIndex, littleEndian, rawValue, rawData, allFrames, elementsPerFrame, totalElements, offset, dataCtr;
+    allFrames = false;
+    mask = daikon.Utils.createBitMask(this.getBitsAllocated() / 8, this.getBitsStored(),
+        this.getDataType() === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED);
+    datatype = this.getPixelRepresentation() ? daikon.Image.BYTE_TYPE_INTEGER : daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED;
+    numBytes = parseInt(Math.ceil(this.getBitsAllocated() / 8));
+    rawData = this.getRawFrameData(frameIndex);
+    dataView = new DataView(rawData);
+    totalElements = rawData.byteLength / numBytes;
+    elementsPerFrame = totalElements;
+    numElements = elementsPerFrame;
+    offset = 0;
+    slope = this.getDataScaleSlope() || 1;
+    intercept = this.getDataScaleIntercept() || 0;
+    min = daikon.Utils.MAX_VALUE;
+    max = daikon.Utils.MIN_VALUE;
+    minIndex = -1;
+    maxIndex = -1;
+    littleEndian = this.littleEndian;
+
+    data = new Float32Array(numElements);
+
+    var getWord;
+    if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+        if (numBytes === 1) {
+            getWord = dataView.getInt8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getInt16.bind(dataView)
+        }
+    } else if (datatype === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED) {
+        if (numBytes === 1) {
+            getWord = dataView.getUint8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getUint16.bind(dataView)
+        }
+    }
+
+    var lutShape = daikon.Image.getSingleValueSafely(this.getTag(daikon.Tag.TAG_LUT_SHAPE[0], daikon.Tag.TAG_LUT_SHAPE[1]), 0);
+    if (lutShape === "INVERSE") {
+        var maxVal = Math.pow(2, this.getBitsStored());
+        if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+            maxVal /= 2;
+        }
+        var originalGetWord = getWord;
+        getWord = function(offset, endian) { 
+            return (maxVal - originalGetWord(offset, endian)); 
+        }
+    }
+
+    for (ctr = 0, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
+        rawValue = getWord(ctr * numBytes, littleEndian);
+
+        value = ((rawValue & mask) * slope) + intercept;
+        data[dataCtr] = value;
+
+        if (value < min) {
+            min = value;
+            minIndex = dataCtr;
+        }
+
+        if (value > max) {
+            max = value;
+            maxIndex = dataCtr;
+        }
+    }
+
+    return {data: data, min: min, minIndex: minIndex, max: max, maxIndex: maxIndex, numCols: this.getCols(),
+        numRows: this.getRows()};
+}
 
 /**
  * Returns interpreted pixel data (considers datatype, byte order, data scales).
  * @param {boolean} asArray - if true, the returned data is a JavaScript Array
  * @param {boolean} asObject - if true, an object is returned with properties: data, min, max, minIndex, maxIndex, numCols, numRows
+ * @param {number} frameIndex - if provided, only the desired frame in a multi-frame dataset is returned
  * @returns {Float32Array|Array|object}
  */
-daikon.Image.prototype.getInterpretedData = function (asArray, asObject) {
+daikon.Image.prototype.getInterpretedData = function (asArray, asObject, frameIndex) {
     var datatype, numBytes, numElements, dataView, data, ctr, mask, slope, intercept, min, max, value, minIndex,
-        maxIndex, littleEndian, rawValue, rawData;
+        maxIndex, littleEndian, rawValue, rawData, allFrames, elementsPerFrame, totalElements, offset, dataCtr;
+    allFrames = arguments.length < 3;
     mask = daikon.Utils.createBitMask(this.getBitsAllocated() / 8, this.getBitsStored(),
         this.getDataType() === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED);
-    datatype = this.getDataType();
-    numBytes = this.getBitsAllocated() / 8;
+    datatype = this.getPixelRepresentation() ? daikon.Image.BYTE_TYPE_INTEGER : daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED;
+    numBytes = parseInt(Math.ceil(this.getBitsAllocated() / 8));
     rawData = this.getRawData();
     dataView = new DataView(rawData);
-    numElements = rawData.byteLength / numBytes;
+    totalElements = rawData.byteLength / numBytes;
+    elementsPerFrame = totalElements / this.getNumberOfFrames();
+    numElements = allFrames ? totalElements : elementsPerFrame;
+    offset = allFrames ? 0 : frameIndex * elementsPerFrame;
     slope = this.getDataScaleSlope() || 1;
     intercept = this.getDataScaleIntercept() || 0;
     min = daikon.Utils.MAX_VALUE;
@@ -581,37 +680,51 @@ daikon.Image.prototype.getInterpretedData = function (asArray, asObject) {
     littleEndian = this.littleEndian;
 
     if (asArray) {
-        data = [];
+        data = new Array(numElements);
     } else {
         data = new Float32Array(numElements);
     }
-
-    for (ctr = 0; ctr < numElements; ctr += 1) {
-        if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
-            if (numBytes === 1) {
-                rawValue = dataView.getInt8(ctr * numBytes);
-            } else if (numBytes === 2) {
-                rawValue = dataView.getInt16(ctr * numBytes, littleEndian);
-            }
-        } else if (datatype === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED) {
-            if (numBytes === 1) {
-                rawValue = dataView.getUint8(ctr * numBytes);
-            } else if (numBytes === 2) {
-                rawValue = dataView.getUint16(ctr * numBytes, littleEndian);
-            }
+    var getWord;
+    if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+        if (numBytes === 1) {
+            getWord = dataView.getInt8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getInt16.bind(dataView)
         }
+    } else if (datatype === daikon.Image.BYTE_TYPE_INTEGER_UNSIGNED) {
+        if (numBytes === 1) {
+            getWord = dataView.getUint8.bind(dataView)
+        } else if (numBytes === 2) {
+            getWord = dataView.getUint16.bind(dataView)
+        }
+    }
+    
+    var lutShape = daikon.Image.getSingleValueSafely(this.getTag(daikon.Tag.TAG_LUT_SHAPE[0], daikon.Tag.TAG_LUT_SHAPE[1]), 0);
+    if (lutShape === "INVERSE") {
+        var maxVal = Math.pow(2, this.getBitsStored());
+        if (datatype === daikon.Image.BYTE_TYPE_INTEGER) {
+            maxVal /= 2;
+        }
+        var originalGetWord = getWord;
+        getWord = function(offset, endian) { 
+            return (maxVal - originalGetWord(offset, endian)); 
+        }
+    }
+
+    for (ctr = offset, dataCtr = 0; dataCtr < numElements; ctr++, dataCtr++) {
+        rawValue = getWord(ctr * numBytes, littleEndian);
 
         value = ((rawValue & mask) * slope) + intercept;
-        data[ctr] = value;
+        data[dataCtr] = value;
 
         if (value < min) {
             min = value;
-            minIndex = ctr;
+            minIndex = dataCtr;
         }
 
         if (value > max) {
             max = value;
-            maxIndex = ctr;
+            maxIndex = dataCtr;
         }
     }
 
@@ -619,11 +732,50 @@ daikon.Image.prototype.getInterpretedData = function (asArray, asObject) {
         return {data: data, min: min, minIndex: minIndex, max: max, maxIndex: maxIndex, numCols: this.getCols(),
             numRows: this.getRows()};
     }
-
+    
     return data;
 };
 
+daikon.Image.prototype.depaletizeFrameData = function (data) {
+    var reds, greens, blues, rgb, numBytes, numElements, ctr, index, rVal, gVal, bVal;
 
+    reds = this.getPalleteValues(daikon.Tag.TAG_PALETTE_RED);
+    greens = this.getPalleteValues(daikon.Tag.TAG_PALETTE_GREEN);
+    blues = this.getPalleteValues(daikon.Tag.TAG_PALETTE_BLUE);
+
+    if ((reds !== null) && (reds.length > 0) && (greens !== null) && (greens.length > 0) && (blues !== null) &&
+            (blues.length > 0)) {
+        rgb = new DataView(new ArrayBuffer(this.getRows() * this.getCols() * 3));
+        numBytes = parseInt(Math.ceil(this.getBitsAllocated() / 8));
+        numElements = data.byteLength / numBytes;
+
+        if (numBytes === 1) {
+            for (ctr = 0; ctr < numElements; ctr += 1) {
+                index = data.getUint8(ctr);
+                rVal = reds[index];
+                gVal = greens[index];
+                bVal = blues[index];
+                rgb.setUint8((ctr * 3), rVal);
+                rgb.setUint8((ctr * 3) + 1, gVal);
+                rgb.setUint8((ctr * 3) + 2, bVal);
+            }
+        } else if (numBytes === 2) {
+            for (ctr = 0; ctr < numElements; ctr += 1) {
+                index = data.getUint16(ctr * 2);
+                rVal = reds[index];
+                gVal = greens[index];
+                bVal = blues[index];
+                rgb.setUint8((ctr * 3), rVal);
+                rgb.setUint8((ctr * 3) + 1, gVal);
+                rgb.setUint8((ctr * 3) + 2, bVal);
+            }
+        }
+
+        return rgb;
+    }
+
+    return data;
+}
 
 daikon.Image.prototype.convertPalette = function () {
     var data, reds, greens, blues, rgb, numBytes, numElements, ctr, index, rVal, gVal, bVal;
@@ -699,7 +851,117 @@ daikon.Image.prototype.decompressJPEG = function (jpg) {
     }
 };
 
+daikon.Image.prototype.getDecompressedFrame = function (frameIndex) {
+    var compressedFrames, frame, frameSize, decoder, decoded, width, height, numComponents,
+        numBytes, decompressed;
 
+    frameSize = this.getRows() * this.getCols() * parseInt(Math.ceil(this.getBitsAllocated() / 8));
+    numBytes = parseInt(Math.ceil(this.getBitsAllocated() / 8));
+
+    if (this.isCompressedJPEGLossless()) {
+        frame = this.getJpegs(frameIndex);
+        decoder = new jpeg.lossless.Decoder();
+        decoded = decoder.decode(frame);
+        numComponents = decoder.numComp;
+
+        return {
+            data: decoded.buffer,
+            width: decoder.width,
+            height: decoder.height,
+            numComponents: decoder.numComp,
+            bitsAllocated: this.getBitsAllocated(),
+            frameSize: frameSize
+        };
+    } else if (this.isCompressedJPEGBaseline()) {
+        frame = this.getJpegs(frameIndex);
+        decoder = new JpegDecoder();
+        decoder.parse(new Uint8Array(frame));
+        width = decoder.width;
+        height = decoder.height;
+        numComponents = decoder.components.length;
+        decompressed = new DataView(new ArrayBuffer(frameSize * numComponents));
+
+        if (numBytes === 1) {
+            decoded = decoder.getData(width, height);
+        } else if (numBytes === 2) {
+            decoded = decoder.getData16(width, height);
+        }
+
+        daikon.Utils.fillBuffer(decoded, decompressed, 0, numBytes);
+
+        return {
+            data: decompressed.buffer,
+            width: width,
+            height: height,
+            numComponents: numComponents,
+            bitsAllocated: this.getBitsAllocated(),
+            frameSize: frameSize
+        };
+    } else if (this.isCompressedJPEG2000()) {
+        frame = this.getJpegs(frameIndex);
+        decoder = new JpxImage();
+        decoder.parse(new Uint8Array(jpegs[ctr]));
+        width = decoder.width;
+        height = decoder.height;
+        decoded = decoder.tiles[0].items;
+        numComponents = decoder.componentsCount;
+        decompressed = new DataView(new ArrayBuffer(frameSize * numComponents));
+
+        daikon.Utils.fillBuffer(decoded, decompressed, 0, numBytes);
+
+        return {
+            data: decompressed.buffer,
+            width: width,
+            height: height,
+            numComponents: numComponents,
+            bitsAllocated: this.getBitsAllocated(),
+            frameSize: frameSize
+        };
+    } else if (this.isCompressedJPEGLS()) {
+        frame = this.getJpegs(frameIndex);
+        decoder = new JpegLSDecoder();
+        var decoded = decoder.decodeJPEGLS(new Uint8Array(jpegs[ctr]), this.getDataType() === daikon.Image.BYTE_TYPE_INTEGER);
+        width = decoded.columns;
+        height = decoded.rows;
+        decoded = decoded.pixelData;
+        numComponents = this.getNumberOfSamplesPerPixel();
+        decompressed = new DataView(new ArrayBuffer(frameSize * numComponents));
+
+        daikon.Utils.fillBuffer(decoded, decompressed, 0, numBytes);
+
+        return {
+            data: decompressed.buffer,
+            width: width,
+            height: height,
+            numComponents: numComponents,
+            bitsAllocated: this.getBitsAllocated(),
+            frameSize: frameSize
+        };
+    } else if (this.isCompressedRLE()) {
+        frame = this.getRLE(frameIndex);
+        decoder = new daikon.RLE();
+        temp = decoder.decode(rle[ctr], this.littleEndian, this.getRows() * this.getCols());
+        numComponents = (decoder.numSegments === 3 ? 3 : 1);
+
+        return {
+            data: temp.buffer,
+            width: this.getCols(),
+            height: this.getRows(),
+            numComponents: numComponents,
+            bitsAllocated: this.getBitsAllocated(),
+            frameSize: frameSize
+        };
+    }
+
+    return {
+        data: this.tags[daikon.Tag.createId(daikon.Tag.TAG_PIXEL_DATA[0], daikon.Tag.TAG_PIXEL_DATA[1])].value.buffer,
+        width: this.getCols(),
+        height: this.getRows(),
+        numComponents: 3,
+        bitsAllocated: this.getBitsAllocated(),
+        frameSize: frameSize
+    };
+}
 
 daikon.Image.prototype.decompress = function () {
     var jpegs, rle, decoder, decompressed, numFrames, frameSize, temp, ctr, width, height, numComponents, decoded;
@@ -1440,8 +1702,9 @@ daikon.Image.prototype.getEncapsulatedData = function () {
 
 
 
-daikon.Image.prototype.getJpegs = function () {
-    var encapTags, numTags, ctr, currentJpeg, data = [], dataConcat = [];
+daikon.Image.prototype.getJpegs = function (frameIndex) {
+    var encapTags, numTags, ctr, currentJpeg, data = [], dataConcat = [], curIndex = -1,
+        allFrames = arguments.length === 0;
 
     encapTags = this.getEncapsulatedData();
 
@@ -1452,10 +1715,13 @@ daikon.Image.prototype.getJpegs = function () {
         for (ctr = 0; ctr < numTags; ctr += 1) {
             if (daikon.CompressionUtils.isHeaderJPEG(encapTags[ctr].value) ||
                 daikon.CompressionUtils.isHeaderJPEG2000(encapTags[ctr].value)) {
+                curIndex++;
                 currentJpeg = [];
-                currentJpeg.push(encapTags[ctr].value.buffer);
-                data.push(currentJpeg);
-            } else if (currentJpeg && encapTags[ctr].value) {
+                if (allFrames || curIndex === frameIndex) {
+                    currentJpeg.push(encapTags[ctr].value.buffer);
+                    data.push(currentJpeg);
+                }
+            } else if (currentJpeg && encapTags[ctr].value && (allFrames || curIndex === frameIndex)) {
                 currentJpeg.push(encapTags[ctr].value.buffer);
             }
         }
@@ -1472,13 +1738,14 @@ daikon.Image.prototype.getJpegs = function () {
         data[ctr] = null;
     }
 
-    return dataConcat;
+    return allFrames ? dataConcat : dataConcat[0];
 };
 
 
 
-daikon.Image.prototype.getRLE = function () {
-    var encapTags, numTags, ctr, data = [];
+daikon.Image.prototype.getRLE = function (frameIndex) {
+    var encapTags, numTags, ctr, data = [], allFrames = arguments.length === 0,
+        curIndex = -1;
 
     encapTags = this.getEncapsulatedData();
 
@@ -1489,6 +1756,12 @@ daikon.Image.prototype.getRLE = function () {
         // the first sublist item contains offsets, need offsets?
         for (ctr = 1; ctr < numTags; ctr += 1) {
             if (encapTags[ctr].value) {
+                curIndex++;
+
+                if (!allFrames && curIndex === frameIndex) {
+                    return encapTags[ctr].value.buffer;
+                }
+
                 data.push(encapTags[ctr].value.buffer);
             }
         }
