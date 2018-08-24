@@ -1,6 +1,6 @@
 {
   "name": "qiiu-daikon",
-  "version": "1.2.23",
+  "version": "1.3.0",
   "description": "Fork of daikon - A JavaScript DICOM reader.",
   "main": "src/main.js",
   "directories": {
